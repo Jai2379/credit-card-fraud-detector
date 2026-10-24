@@ -13,9 +13,9 @@ table_info = cursor.fetchone() # grabs the first table name found
 
 if table_info:
     table_name = table_info[0]
-    print(f"📡 system online. connected to table: '{table_name}'")
+    print(f"system online. connected to table: '{table_name}'")
 else:
-    print("❌ error: no tables found in the database!")
+    print("error: no tables found in the database!")
     exit()
 
 # pulling one random transaction using an f-string to inject the dynamic table name.
@@ -27,6 +27,6 @@ record_id = df_row.iloc[0]['rowid']
 real_tx = df_row.iloc[0].drop('rowid').to_dict() # stripping the id so it doesn't mess with the model input
 
 # sending the data to mahoraga for the final verdict.
-print(f"--- 🎲 random live sql check ---")
+print(f"--- random live sql check ---")
 print(f"analyzing transaction record id: {record_id}") 
 print(check_transaction(real_tx))

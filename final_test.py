@@ -7,7 +7,7 @@ from sklearn.metrics import recall_score
 def run_mahoraga_verification(old_model_path, data_path):
     # check if a model even exists. if not, force a training session to build one.
     if not os.path.exists(old_model_path):
-        print(f"⚠️ {old_model_path} not found. forcing initial training...")
+        print(f"{old_model_path} not found. forcing initial training...")
         mahoraga.auto_retrain(data_path) 
 
     # 1. load the current brain.
@@ -25,7 +25,7 @@ def run_mahoraga_verification(old_model_path, data_path):
     missing_features = [f for f in old_features if f not in df_path.columns]
     
     if missing_features:
-        print(f"🚨 schema change detected! missing features: {missing_features}")
+        print(f"schema change detected! missing features: {missing_features}")
         print("old model is physically incompatible. mahoraga is evolving to the new schema...")
         # skip the test and go straight to rebuilding the model.
         mahoraga.auto_retrain(data_path) 
@@ -43,7 +43,7 @@ def run_mahoraga_verification(old_model_path, data_path):
         print("warning! accuracy too low! mahoraga is adapting to the new trends...")
         mahoraga.auto_retrain(data_path) 
     elif old_recall >= 0.90:
-        print("✅ old model is still performing well. no adaptation needed.")
+        print("old model is still performing well. no adaptation needed.")
         return
 
     # 5. load the newly evolved brain.
@@ -58,7 +58,7 @@ def run_mahoraga_verification(old_model_path, data_path):
     new_recall = recall_score(df_path[target], y_new_pred)
     
     print(f"adapted model recall on new data: {new_recall:.2f}")
-    print("✅ adaptation complete. the system has evolved to the new dataset.")
+    print("adaptation complete. the system has evolved to the new dataset.")
 
 # run the verification loop
 run_mahoraga_verification('models/active_model.pkl', 'creditcard_2023.csv')

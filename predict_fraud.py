@@ -30,9 +30,9 @@ def check_transaction(new_data_dict):
     print(f"there is a {probability * 100:.2f}% chance this is fraud.")
     
     if prediction == 1:
-        return "🚨 alert: this looks like fraud!"
+        return "alert: this looks like fraud!"
     else:
-        return "✅ clear: this transaction is likely genuine."
+        return "clear: this transaction is likely genuine."
 
 # --- sandbox testing ---
 # dumping some dummy data here to stress-test the model's logic.

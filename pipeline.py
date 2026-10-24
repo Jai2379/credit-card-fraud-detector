@@ -10,7 +10,7 @@ class FraudPipeline:
         self.model_path = model_path
 
     def auto_retrain(self, data_path):
-        print(f"🔄 trend detected! re-training on {data_path}...")
+        print(f"trend detected! re-training on {data_path}...")
         df = pd.read_csv(data_path)
 
         # 1. ghost feature logic: find any numbers we can work with.
@@ -27,7 +27,7 @@ class FraudPipeline:
         X = df[features]
         y = df[target]
 
-        print(f"📊 analyzing {len(features)} potential features...")
+        print(f"analyzing {len(features)} potential features...")
 
         # 2. dynamic feature selection.
         # if the dataset is tiny, we just take everything. otherwise, we grab the top 6 red flags.
@@ -55,7 +55,7 @@ class FraudPipeline:
             'target_name': target
         }, self.model_path)
         
-        print(f"✅ adaptation complete! mahoraga now relies on: {selected_features}")
+        print(f"adaptation complete! mahoraga now relies on: {selected_features}")
 
 # boot up the pipeline instance
 mahoraga = FraudPipeline()
