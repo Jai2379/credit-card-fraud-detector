@@ -1,119 +1,114 @@
-# Credit Card Fraud Detection using Machine Learning
+# Credit Card Fraud Detector
 
-> **An automated, end-to-end machine learning pipeline to detect fraudulent credit card transactions with high precision.**
+Random Forest fraud classifier with a drift-triggered retraining loop. The model is built on the 2013 European cardholder dataset, then validated against a newer dataset. It rebuilds itself when recall on the new data falls below 0.90 or when the features it was trained on no longer exist in the incoming schema.
 
-## 📌 Project Overview
+The retraining pipeline object is named `mahoraga`, after the shikigami that adapts to whatever hits it.
 
-**The Problem:** Credit card fraud costs the financial industry billions of dollars annually. Identifying malicious transactions among millions of genuine purchases is a complex "needle in a haystack" problem.
+## Dataset profile
 
-**The Goal:** Build a robust, real-time predictive model to identify fraudulent transactions, thereby minimizing financial risk and reducing false positives that inconvenience real customers.
+From `fraud.ipynb`, on `creditcard.csv` (2013):
 
-**The Approach:** This project leverages Exploratory Data Analysis (EDA), statistical feature selection, and a Random Forest Classifier. Because fraud cases are extremely rare, we use **SMOTE (Synthetic Minority Over-sampling Technique)** to balance the dataset and ensure the model learns effectively.
+| Property | Value |
+|:--|:--|
+| Transactions | 284,807 |
+| Columns | 31: `Time`, `V1`–`V28` (PCA components), `Amount`, `Class` |
+| Fraud cases | 492 (0.173%) |
+| Mean amount, genuine / fraud | 88.29 / 122.21 |
+| Median amount, genuine / fraud | 22.00 / 9.25 |
+| Strongest negative correlation with `Class` | `V17` −0.326, `V14` −0.303, `V12` −0.261, `V10` −0.217, `V16` −0.197 |
+| Strongest positive correlation with `Class` | `V11` +0.155, `V4` +0.133 |
 
-***I developed this project to strengthen my data science skill set, recognizing its growing importance across industries. By working with Python, SQL, and machine learning techniques, I built a foundation in extracting actionable insights from data—skills that play a critical role in driving informed decisions, reducing risk, and improving business outcomes.***
+Fraud has a higher mean but a lower median amount than genuine traffic, so fraudulent amounts are the more right-skewed of the two: many small charges plus a tail of large ones.
 
-### 🔍 Key Insights
-- **Severe Class Imbalance:** Fraudulent transactions make up a tiny fraction of the total dataset. Without intervention, models become heavily biased toward predicting "Normal" transactions.
-- **Distinct Behavioral Patterns:** Key anonymized PCA features (such as `V17`, `V14`, `V12`, `V10`, `V4`) show distinctly different mathematical distributions during a fraudulent event compared to normal spending behavior.
-- **Transaction Amount Variance:** Fraudulent and normal transactions differ in their median amounts and overall spread. However, "stealth fraud" often mimics standard, low-amount daily purchases to avoid tripping simple threshold alarms.
+## Architecture
 
----
+```
+creditcard_2023.csv
+ │
+ ├── importer.py ──► fraud_detection.db (SQLite, table `transactions`)
+ │                          │
+ │                          └──► live_check.py   random row → check_transaction()
+ │
+ └── final_test.py
+       ├── no model on disk        ──► train
+       ├── manifest features missing ──► retrain     (schema drift)
+       ├── recall < 0.90            ──► retrain     (concept drift)
+       └── recall ≥ 0.90            ──► keep current model
+                    │
+                    ▼
+       pipeline.py  FraudPipeline.auto_retrain()  ──►  models/active_model.pkl
+                                                            │
+                                         predict_fraud.check_transaction()
+```
 
-## 🛠️ Tech Stack
+## Components
 
-- **Language(s):** Python, SQL
-- **Data Manipulation:** Pandas, NumPy
-- **Machine Learning:** Scikit-learn, Imbalanced-learn (SMOTE)
-- **Database:** SQLite3
-- **Model Serialization:** Joblib
+**`pipeline.py`: `FraudPipeline.auto_retrain(data_path)`**
 
----
+1. Target discovery: the last column with exactly two unique values whose name does not contain `id`.
+2. Candidate features: numeric columns minus the target and `id`, `rowid`, `time`, `unnamed: 0`.
+3. `SelectKBest(f_classif, k=min(n_features, 6))`.
+4. `SMOTE(random_state=42)` to balance classes.
+5. `RandomForestClassifier(n_estimators=100, max_depth=10, n_jobs=-1, random_state=42)`.
+6. Serialize `{"model", "features", "target_name"}` to `models/active_model.pkl`.
 
-## 🚀 Installation
+Because the target and features are discovered at runtime, a new dataset with a different column set needs no code change.
 
-To set up this project locally, follow these steps:
+**`final_test.py`: `run_mahoraga_verification(model_path, data_path)`**
+
+Loads the active model, checks that every manifest feature exists in the new file, scores recall with `sklearn.metrics.recall_score`, and retrains if either check fails. After a rebuild it reloads the new artifact and prints its recall on the same file.
+
+**`predict_fraud.py`: `check_transaction(tx: dict) -> str`**
+
+Pads missing manifest features with `0.0`, selects columns in manifest order, prints `P(fraud)` from `predict_proba` and returns an alert or clear string. The manifest travels with the model, so the serving input always matches the training feature set.
+
+**`live_check.py`**
+
+Finds the first table through `sqlite_master`, pulls one transaction with `ORDER BY RANDOM() LIMIT 1`, strips `rowid` and scores it.
+
+**`analysis.py`**
+
+Baseline experiment on the 2013 data. Loads the CSV into SQLite, selects `V17, V14, V12, V10, V4, Amount` with a SQL query, applies SMOTE, trains a Random Forest (`max_depth=10`, `min_samples_leaf=10`) and prints a classification report. Writes `final_fraud_detector.pkl`.
+
+## Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/Jai2379/ML-Model-w-SQL---Credit-Card-Fraud-Detection-Tool.git
-
-# Navigate into the project directory
-cd ML-Model-w-SQL---Credit-Card-Fraud-Detection-Tool
-
-# Install the required dependencies
+git clone https://github.com/Jai2379/credit-card-fraud-detector.git
+cd credit-card-fraud-detector
 pip install -r requirements.txt
-
-#Download the datasets for this model from the following:
-- https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
-- https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023
-
-#If using another dataset, ensure the features format corresponds to the type 'V1,V2,V3,etc..'
 ```
 
----
+Place both datasets in the repo root:
 
-## 💻 Usage
+- `creditcard.csv`: [Credit Card Fraud Detection (2013)](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
+- `creditcard_2023.csv`: [Credit Card Fraud Detection Dataset 2023](https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
 
-Follow these steps to set up, test, and adapt the fraud detection pipeline:
+Any replacement dataset needs numeric features and one binary label column.
 
-**1. Import Dataset into Database:**
-Use the `importer.py` utility to load your CSV dataset directly into the SQLite database for testing and evaluation.
 ```bash
-python importer.py
+python importer.py       # creditcard_2023.csv → fraud_detection.db
+python final_test.py     # verify active model, retrain on drift
+python live_check.py     # score a random stored transaction
 ```
 
-**2. Check and Initialize Model:**
-Run `final_test.py` to check for a pre-existing active model. If no model is found, the pipeline will automatically create and train one to fit your current CSV dataset.
-```bash
-python final_test.py
+## Layout
+
+```
+.
+├── analysis.py          baseline SQL + SMOTE + Random Forest experiment
+├── fraud.ipynb          EDA: class balance, amount distribution, fraud by hour, correlations
+├── importer.py          CSV → SQLite
+├── pipeline.py          FraudPipeline / mahoraga
+├── final_test.py        drift check and retrain trigger
+├── predict_fraud.py     check_transaction()
+├── live_check.py        random SQLite row → inference
+├── models/active_model.pkl
+└── requirements.txt
 ```
 
-**3. Evaluate and Adapt:**
-Test the active model against the relevant year's database. Compare the recall score with the corresponding year's CSV data. If the model exhibits low accuracy/recall (indicating shifting fraud patterns), it will initiate the adaptation pipeline to dynamically retrain on the new dataset.
+## Known gaps
 
-**4. Test and Use:**
-Once the model is properly adapted, you can run the live-scanning script to evaluate real-time transaction data, which will generate probability scores and fraud alerts.
-```bash
-python predict_fraud.py
-```
----
-
-## 📂 Project Structure
-
-- `analysis.py`: Handles exploratory data analysis, SQLite integration, SMOTE balancing, and baseline model training.
-- `pipeline.py`: An automated retraining pipeline (`FraudPipeline`) that dynamically selects top features (`SelectKBest`) and retrains the Random Forest model.
-- `predict_fraud.py`: The live-scanning script that evaluates new transactions, outputting a probability score and fraud alert.
-- `models/`: Directory housing the serialized, active machine learning models (e.g., `active_model.pkl`, `final_fraud_detector.pkl`).
-- `fraud.ipynb`: A Jupyter Notebook containing in-depth EDA and data visualization.
-- `creditcard.csv`: The raw transaction dataset (ignored in version control due to size constraints).
-- `importer.py`: A utility script to upload new CSV datasets directly into the SQLite database for continuous testing and evaluation.
-
----
-
-## 🌟 Features
-
-- **Exploratory Data Analysis (EDA):** Deep dives into feature distributions and correlations to separate fraud from normal transactions.
-- **Handling Class Imbalance:** Employs SMOTE to synthetically generate minority class examples, providing the AI with a balanced 50/50 split for fair training.
-- **Dynamic Feature Selection:** Automatically extracts the top predictive red flags using ANOVA F-value statistical tests.
-- **Real-Time Predictive Scoring:** Takes in live transaction dictionaries, applies the active model, and returns a detailed fraud probability score.
-
----
-
-## 📈 Results
-
-- **Initial Baseline Model:** Yielded sub-optimal accuracy and recall due to the overwhelming class imbalance (the model struggled to identify true fraud).
-- **Balanced Model (SMOTE + Random Forest):** By synthetically balancing the data and hyperparameter tuning the Random Forest (e.g., capping `max_depth` to prevent overfitting), the model achieved significantly improved classification metrics, successfully isolating true fraud while minimizing false alarms.
-
----
-
-## 🔮 Future Improvements
-
-- **Algorithm Upgrades:** Experiment with advanced gradient boosting algorithms like XGBoost, LightGBM, or Deep Neural Networks to capture more complex, non-linear relationships.
-- **Real-Time API Deployment:** Wrap the prediction logic in a FastAPI or Flask endpoint for seamless integration with a web or mobile banking application.
-- **Advanced Feature Engineering:** Introduce time-series velocity features (e.g., number of transactions per hour) to detect rapid, successive fraud attempts.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page if you want to contribute. 
+- `analysis.py` applies SMOTE before the train/test split, so synthetic samples leak into the test set and its report is optimistic.
+- After a retrain, `final_test.py` measures recall on the data it just trained on.
+- `creditcard_2023.csv` is class-balanced while the 2013 set is 0.17% fraud, so recall on the two is not directly comparable.
+- Target discovery picks the last binary column and will misfire if a binary feature appears after the label.
